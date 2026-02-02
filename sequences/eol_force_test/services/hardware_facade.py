@@ -354,7 +354,7 @@ class HardwareServiceFacade:
                         measurements_dict[temperature][position]["force"].append(force.value if hasattr(force, "value") else force)
 
                     cycle_measurements_dict[temperature][position] = {"force": force.value if hasattr(force, "value") else force}
-                    logger.debug(f"Force: {force.value if hasattr(force, "value") else force:.3f}kgf")
+                    logger.debug(f"Force: {force.value if hasattr(force, 'value') else force:.3f}kgf")
 
                 # Return to initial position
                 if self._robot_state != RobotState.INITIAL_POSITION:
