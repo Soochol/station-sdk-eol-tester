@@ -50,3 +50,17 @@ class HardwareOperationError(Exception):
         self.operation = operation
         self.reason = reason
         super().__init__(f"{device} {operation} failed: {reason}")
+
+
+class ConfigurationValidationError(Exception):
+    """Exception raised when configuration validation fails."""
+
+    def __init__(
+        self,
+        message: str,
+        errors: Optional[list] = None,
+        config_type: Optional[str] = None,
+    ):
+        self.errors = errors or []
+        self.config_type = config_type
+        super().__init__(message)

@@ -20,6 +20,9 @@ from .domain.value_objects import (
     DUTCommandInfo,
 )
 from .services.hardware_facade import HardwareServiceFacade
+from .services.industrial_system_manager import IndustrialSystemManager
+from .services.tower_lamp_service import SystemStatus
+from .services.configuration_validator import ConfigurationValidator
 
 
 class EOLHardwareAdapter:
@@ -50,6 +53,12 @@ class EOLHardwareAdapter:
         self._hardware_config = hardware_config
         self._connected = False
 
+        # Industrial System Manager (lazy initialized)
+        self._industrial_manager: Optional[IndustrialSystemManager] = None
+
+        # Configuration Validator
+        self._config_validator = ConfigurationValidator()
+
     @property
     def is_connected(self) -> bool:
         """Check if hardware is connected."""
@@ -64,6 +73,79 @@ class EOLHardwareAdapter:
     def hardware_config(self) -> "HardwareConfig":
         """Get the hardware configuration."""
         return self._hardware_config
+
+    @property
+    def industrial_manager(self) -> Optional[IndustrialSystemManager]:
+        """Get the industrial system manager (may be None if not initialized)."""
+        return self._industrial_manager
+
+    # =========================================================================
+    # Configuration Validation
+    # =========================================================================
+
+    async def validate_configurations(self) -> None:
+        """
+        Validate test and hardware configurations.
+
+        Raises:
+            ConfigurationValidationError: If validation fails
+        """
+        logger.info("EOLHardwareAdapter: Validating configurations...")
+        await self._config_validator.validate_all_configurations(
+            self._test_config,
+            self._hardware_config,
+        )
+        logger.info("EOLHardwareAdapter: Configuration validation passed")
+
+    async def get_configuration_summary(self) -> Dict[str, Any]:
+        """Get configuration summary for logging."""
+        return await self._config_validator.get_configuration_summary(
+            self._test_config,
+            self._hardware_config,
+        )
+
+    # =========================================================================
+    # Industrial System Manager
+    # =========================================================================
+
+    async def initialize_industrial_system(self) -> None:
+        """Initialize industrial system manager for tower lamp control."""
+        if self._industrial_manager is not None:
+            logger.debug("Industrial system already initialized")
+            return
+
+        try:
+            logger.info("EOLHardwareAdapter: Initializing industrial system...")
+            self._industrial_manager = IndustrialSystemManager(
+                digital_io_service=self._facade.digital_io_service,
+                hardware_config=self._hardware_config,
+            )
+            await self._industrial_manager.initialize_system()
+            logger.info("EOLHardwareAdapter: Industrial system initialized")
+        except Exception as e:
+            logger.warning(f"Failed to initialize industrial system: {e}")
+            self._industrial_manager = None
+
+    async def set_system_status(self, status: SystemStatus) -> None:
+        """Set system status for tower lamp indication."""
+        if self._industrial_manager:
+            await self._industrial_manager.set_system_status(status)
+
+    async def handle_test_completion(
+        self, test_success: bool, test_error: bool = False
+    ) -> None:
+        """Handle test completion with tower lamp indication."""
+        if self._industrial_manager:
+            await self._industrial_manager.handle_test_completion(
+                test_success=test_success,
+                test_error=test_error,
+            )
+
+    async def shutdown_industrial_system(self) -> None:
+        """Shutdown industrial system manager."""
+        if self._industrial_manager:
+            await self._industrial_manager.shutdown_system()
+            self._industrial_manager = None
 
     async def connect(self) -> None:
         """Connect to all hardware devices."""

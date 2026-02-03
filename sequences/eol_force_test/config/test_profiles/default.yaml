@@ -1,0 +1,73 @@
+
+hardware:
+  voltage: 40.0
+  current: 42.0
+  upper_current: 42.0
+  upper_temperature: 80.0
+  activation_temperature: 52.0
+  standby_temperature: 38.0
+  fan_speed: 10
+  operating_position: 175000.0
+  initial_position: 1000.0
+
+motion_control:
+  velocity: 100000.0
+  acceleration: 85000.0
+  deceleration: 85000.0
+
+timing:
+  robot_move_stabilization: 0.1
+  mcu_temperature_stabilization: 0.1
+  robot_standby_stabilization: 1.0
+  poweron_stabilization: 0.5
+  power_command_stabilization: 0.2
+  loadcell_zero_delay: 0.1
+  mcu_command_stabilization: 0.1
+  mcu_boot_complete_stabilization: 2.0
+
+test_parameters:
+  temperature_list:
+  - 38.0
+  - 52.0
+  - 66.0
+  - 72.0
+  stroke_positions:
+  - 170000.0
+
+safety:
+  max_voltage: 50.0
+  max_current: 48.0
+  max_velocity: 100000.0
+  max_acceleration: 100000.0
+  max_deceleration: 100000.0
+  max_stroke: 180000.0
+
+execution:
+  retry_attempts: 3
+  timeout_seconds: 60.0
+  repeat_count: 1
+
+tolerances:
+  measurement_tolerance: 0.001
+  force_precision: 2
+  temperature_precision: 1
+  temperature_tolerance: 3.0
+
+pass_criteria:
+  force_limit_min: 0.0
+  force_limit_max: 100.0
+  temperature_limit_min: -10.0
+  temperature_limit_max: 80.0
+  measurement_tolerance: 0.001
+  force_precision: 2
+  temperature_precision: 1
+  position_tolerance: 0.5
+  max_test_duration: 300.0
+  min_stabilization_time: 0.5
+  spec_points: []
+
+metadata:
+  profile_name: default
+  created_at: '2025-09-17T16:16:04.246608'
+  note: Auto-generated default test profile 'default'
+  created_by: YamlConfiguration (auto-generated)

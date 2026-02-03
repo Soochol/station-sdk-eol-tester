@@ -1,0 +1,13 @@
+active_profile: default
+default:
+  dut_id: DEFAULT001
+  model: Default Model
+  operator_id: DEFAULT_OP
+  manufacturer: Default Manufacturer
+  serial_number: SN001
+  part_number: PN001
+
+metadata:
+  created_at: '2025-09-17T16:16:03.609413'
+  note: Auto-generated default configuration
+  created_by: YamlConfiguration (auto-generated)

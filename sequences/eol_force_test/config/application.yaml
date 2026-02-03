@@ -1,0 +1,28 @@
+application:
+  name: WF EOL Tester
+  version: 1.0.0
+  environment: development
+
+services:
+  repository:
+    results_path: Logs/test_results/json
+    raw_data_path: Logs/measurements/raw_data
+    summary_path: Logs/measurements
+    summary_filename: test_summary.csv
+    auto_save: true
+  configuration:
+    application_path: configuration/application.yaml
+    hardware_path: configuration/hardware_config.yaml
+    profile_preference_path: configuration/profile_preferences.json
+    test_profiles_dir: configuration/test_profiles
+    heating_cooling_path: configuration/heating_cooling_time_test.yaml
+
+logging:
+  level: INFO
+gui:
+  require_serial_number_popup: true
+
+metadata:
+  created_at: '2025-09-17T16:15:50.710604'
+  note: Auto-generated default application configuration
+  created_by: YamlContainerConfigurationLoader (auto-generated)

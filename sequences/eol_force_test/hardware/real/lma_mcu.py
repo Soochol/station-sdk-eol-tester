@@ -11,6 +11,7 @@ import time
 from typing import Any, Dict, List, Optional
 
 import serial
+from loguru import logger
 
 from ...interfaces import MCUService
 
@@ -272,59 +273,187 @@ class LMAMCU(MCUService):
         """Get current test mode."""
         return self._current_test_mode
 
-    async def set_operating_temperature(self, target_temp: float) -> None:
-        """Set operating temperature."""
+    async def set_operating_temperature(self, target_temp: float, max_retries: int = 3) -> None:
+        """Set operating temperature with retry logic."""
         self._ensure_connected()
 
-        temp_scaled = int(target_temp * TEMP_SCALE_FACTOR)
-        packet = f"FFFF0504{temp_scaled:08X}FEFE"
-        packet_bytes = bytes.fromhex(packet.replace(" ", ""))
+        last_error = None
+        for attempt in range(max_retries):
+            try:
+                if attempt > 0:
+                    logger.warning(
+                        f"🔄 Retry attempt {attempt + 1}/{max_retries} for set operating temperature"
+                    )
+                    # 재시도 시 test mode 1을 먼저 전송하여 MCU 상태 초기화
+                    try:
+                        logger.info("📡 Sending test mode 1 before retry...")
+                        test_mode_packet = "FFFF010400000001FEFE"
+                        test_packet_bytes = bytes.fromhex(test_mode_packet.replace(" ", ""))
 
-        if self.serial_conn:
-            self.serial_conn.write(packet_bytes)
+                        if self.serial_conn:
+                            self.serial_conn.write(test_packet_bytes)
+                            await self._wait_for_additional_response(
+                                timeout=2.0, expected_cmd=0x01
+                            )
+                            await asyncio.sleep(0.5)  # MCU 안정화 대기
+                    except Exception as test_error:
+                        logger.warning(
+                            f"⚠️ Test mode 1 failed: {test_error} - proceeding with retry anyway"
+                        )
+                    await asyncio.sleep(0.5)  # 추가 대기 후 재시도
 
-        response = await self._wait_for_additional_response(
-            timeout=self._timeout, expected_cmd=0x05
-        )
+                temp_scaled = int(target_temp * TEMP_SCALE_FACTOR)
+                packet = f"FFFF0504{temp_scaled:08X}FEFE"
+                packet_bytes = bytes.fromhex(packet.replace(" ", ""))
 
-        if not response or len(response) < 6 or response[2] != 0x05:
-            raise RuntimeError("Invalid operating temperature ACK response")
+                if self.serial_conn:
+                    self.serial_conn.write(packet_bytes)
+                    logger.info(f"PC -> MCU: {packet} (Set Operating Temp: {target_temp}°C)")
 
-        temp_response = await self._wait_for_additional_response(
-            timeout=10.0, expected_cmd=0x0B
-        )
+                response = await self._wait_for_additional_response(
+                    timeout=self._timeout, expected_cmd=0x05
+                )
 
-        if temp_response and len(temp_response) >= 6 and temp_response[2] == 0x0B:
-            self._target_temperature = target_temp
-        else:
-            raise RuntimeError("Operating temperature reached signal not received")
+                if not response or len(response) < 6 or response[2] != 0x05:
+                    raise RuntimeError("Invalid operating temperature ACK response")
 
-    async def set_cooling_temperature(self, target_temp: float) -> None:
-        """Set cooling temperature."""
+                temp_response = await self._wait_for_additional_response(
+                    timeout=10.0, expected_cmd=0x0B
+                )
+
+                if temp_response and len(temp_response) >= 6 and temp_response[2] == 0x0B:
+                    self._target_temperature = target_temp
+                    logger.info(
+                        f"✅ Operating temperature set: {target_temp}°C (attempt {attempt + 1})"
+                    )
+                    return  # 성공 - 함수 종료
+
+                else:
+                    # 타임아웃 또는 잘못된 응답 - 재시도
+                    if temp_response:
+                        received_cmd = temp_response[2] if len(temp_response) >= 3 else None
+                        error_msg = (
+                            f"Invalid operating temperature response: {temp_response.hex().upper()} "
+                            f"(received CMD=0x{received_cmd:02X}, expected CMD=0x0B)"
+                            if received_cmd is not None
+                            else f"Invalid operating temperature response: {temp_response.hex().upper()}"
+                        )
+                    else:
+                        error_msg = "Operating temperature reached signal not received within timeout"
+
+                    if attempt < max_retries - 1:
+                        logger.warning(
+                            f"⚠️ {error_msg} - will retry (attempt {attempt + 1}/{max_retries})"
+                        )
+                    else:
+                        logger.error(f"❌ {error_msg} - max retries exceeded")
+
+                    raise RuntimeError(error_msg)
+
+            except Exception as e:
+                last_error = e
+                if attempt < max_retries - 1:
+                    logger.warning(f"⚠️ Attempt {attempt + 1} failed: {e} - will retry")
+                    continue
+                else:
+                    logger.error(f"❌ All {max_retries} attempts failed")
+                    break
+
+        # 모든 재시도 실패
+        error_msg = f"Operating temperature setting failed after {max_retries} attempts: {last_error}"
+        logger.error(error_msg)
+        raise RuntimeError(error_msg) from last_error
+
+    async def set_cooling_temperature(self, target_temp: float, max_retries: int = 3) -> None:
+        """Set cooling temperature with retry logic."""
         self._ensure_connected()
 
-        temp_scaled = int(target_temp * TEMP_SCALE_FACTOR)
-        packet = f"FFFF0604{temp_scaled:08X}FEFE"
-        packet_bytes = bytes.fromhex(packet.replace(" ", ""))
+        last_error = None
+        for attempt in range(max_retries):
+            try:
+                if attempt > 0:
+                    logger.warning(
+                        f"🔄 Retry attempt {attempt + 1}/{max_retries} for set cooling temperature"
+                    )
+                    # 재시도 시 test mode 1을 먼저 전송하여 MCU 상태 초기화
+                    try:
+                        logger.info("📡 Sending test mode 1 before retry...")
+                        test_mode_packet = "FFFF010400000001FEFE"
+                        test_packet_bytes = bytes.fromhex(test_mode_packet.replace(" ", ""))
 
-        if self.serial_conn:
-            self.serial_conn.write(packet_bytes)
+                        if self.serial_conn:
+                            self.serial_conn.write(test_packet_bytes)
+                            await self._wait_for_additional_response(
+                                timeout=2.0, expected_cmd=0x01
+                            )
+                            await asyncio.sleep(0.5)  # MCU 안정화 대기
+                    except Exception as test_error:
+                        logger.warning(
+                            f"⚠️ Test mode 1 failed: {test_error} - proceeding with retry anyway"
+                        )
+                    await asyncio.sleep(0.5)  # 추가 대기 후 재시도
 
-        response = await self._wait_for_additional_response(
-            timeout=self._timeout, expected_cmd=0x06
-        )
+                temp_scaled = int(target_temp * TEMP_SCALE_FACTOR)
+                packet = f"FFFF0604{temp_scaled:08X}FEFE"
+                packet_bytes = bytes.fromhex(packet.replace(" ", ""))
 
-        if not response or len(response) < 6 or response[2] != 0x06:
-            raise RuntimeError("Invalid cooling temperature ACK response")
+                if self.serial_conn:
+                    self.serial_conn.write(packet_bytes)
+                    logger.info(f"PC -> MCU: {packet} (Set Cooling Temp: {target_temp}°C)")
 
-        cooling_response = await self._wait_for_additional_response(
-            timeout=40.0, expected_cmd=0x0D
-        )
+                response = await self._wait_for_additional_response(
+                    timeout=self._timeout, expected_cmd=0x06
+                )
 
-        if cooling_response and len(cooling_response) >= 6 and cooling_response[2] == 0x0D:
-            self._target_temperature = target_temp
-        else:
-            raise RuntimeError("Cooling temperature reached signal not received")
+                if not response or len(response) < 6 or response[2] != 0x06:
+                    raise RuntimeError("Invalid cooling temperature ACK response")
+
+                cooling_response = await self._wait_for_additional_response(
+                    timeout=40.0, expected_cmd=0x0D
+                )
+
+                if cooling_response and len(cooling_response) >= 6 and cooling_response[2] == 0x0D:
+                    self._target_temperature = target_temp
+                    logger.info(
+                        f"✅ Cooling temperature set: {target_temp}°C (attempt {attempt + 1})"
+                    )
+                    return  # 성공 - 함수 종료
+
+                else:
+                    # 타임아웃 또는 잘못된 응답 - 재시도
+                    if cooling_response:
+                        received_cmd = cooling_response[2] if len(cooling_response) >= 3 else None
+                        error_msg = (
+                            f"Invalid cooling temperature response: {cooling_response.hex().upper()} "
+                            f"(received CMD=0x{received_cmd:02X}, expected CMD=0x0D)"
+                            if received_cmd is not None
+                            else f"Invalid cooling temperature response: {cooling_response.hex().upper()}"
+                        )
+                    else:
+                        error_msg = "Cooling temperature reached signal not received within timeout"
+
+                    if attempt < max_retries - 1:
+                        logger.warning(
+                            f"⚠️ {error_msg} - will retry (attempt {attempt + 1}/{max_retries})"
+                        )
+                    else:
+                        logger.error(f"❌ {error_msg} - max retries exceeded")
+
+                    raise RuntimeError(error_msg)
+
+            except Exception as e:
+                last_error = e
+                if attempt < max_retries - 1:
+                    logger.warning(f"⚠️ Attempt {attempt + 1} failed: {e} - will retry")
+                    continue
+                else:
+                    logger.error(f"❌ All {max_retries} attempts failed")
+                    break
+
+        # 모든 재시도 실패
+        error_msg = f"Cooling temperature setting failed after {max_retries} attempts: {last_error}"
+        logger.error(error_msg)
+        raise RuntimeError(error_msg) from last_error
 
     async def set_upper_temperature(self, upper_temp: float) -> None:
         """Set upper temperature limit."""
@@ -372,76 +501,215 @@ class LMAMCU(MCUService):
         operating_temp: float,
         standby_temp: float,
         hold_time_ms: int = 60000,
+        max_retries: int = 3,
     ) -> None:
-        """Start standby heating mode."""
+        """Start standby heating mode with retry logic."""
         self._ensure_connected()
 
         self._current_operating_temp = operating_temp
         self._current_standby_temp = standby_temp
 
-        op_temp_scaled = int(operating_temp * TEMP_SCALE_FACTOR)
-        standby_temp_scaled = int(standby_temp * TEMP_SCALE_FACTOR)
+        last_error = None
+        for attempt in range(max_retries):
+            try:
+                if attempt > 0:
+                    logger.warning(
+                        f"🔄 Retry attempt {attempt + 1}/{max_retries} for standby heating"
+                    )
+                    # 재시도 시 test mode 1을 먼저 전송하여 MCU 상태 초기화
+                    try:
+                        logger.info("📡 Sending test mode 1 before retry...")
+                        test_mode_packet = "FFFF010400000001FEFE"
+                        test_packet_bytes = bytes.fromhex(test_mode_packet.replace(" ", ""))
 
-        data = f"{op_temp_scaled:08X}{standby_temp_scaled:08X}{hold_time_ms:08X}"
-        packet = f"FFFF040C{data}FEFE"
-        packet_bytes = bytes.fromhex(packet.replace(" ", ""))
+                        if self.serial_conn:
+                            self.serial_conn.write(test_packet_bytes)
+                            # Test mode 응답 대기 (짧은 타임아웃)
+                            await self._wait_for_additional_response(
+                                timeout=2.0, expected_cmd=0x01
+                            )
+                            await asyncio.sleep(0.5)  # MCU 안정화 대기
+                    except Exception as test_error:
+                        logger.warning(
+                            f"⚠️ Test mode 1 failed: {test_error} - proceeding with retry anyway"
+                        )
+                    await asyncio.sleep(0.5)  # 추가 대기 후 재시도
 
-        start_time = time.perf_counter()
+                op_temp_scaled = int(operating_temp * TEMP_SCALE_FACTOR)
+                standby_temp_scaled = int(standby_temp * TEMP_SCALE_FACTOR)
 
-        if self.serial_conn:
-            self.serial_conn.write(packet_bytes)
+                data = f"{op_temp_scaled:08X}{standby_temp_scaled:08X}{hold_time_ms:08X}"
+                packet = f"FFFF040C{data}FEFE"
+                packet_bytes = bytes.fromhex(packet.replace(" ", ""))
 
-        response = await self._wait_for_additional_response(
-            timeout=self._timeout, expected_cmd=0x04
-        )
+                start_time = time.perf_counter()
 
-        if not response or len(response) < 6 or response[2] != 0x04:
-            raise RuntimeError("Invalid standby heating ACK response")
+                if self.serial_conn:
+                    self.serial_conn.write(packet_bytes)
+                    logger.info(
+                        f"PC -> MCU: {packet} (Heating: {standby_temp}°C → {operating_temp}°C)"
+                    )
 
-        temp_response = await self._wait_for_additional_response(
-            timeout=10.0, expected_cmd=0x0B
-        )
+                response = await self._wait_for_additional_response(
+                    timeout=self._timeout, expected_cmd=0x04
+                )
 
-        if temp_response and len(temp_response) >= 6 and temp_response[2] == 0x0B:
-            total_time = (time.perf_counter() - start_time) * 1000
-            self._heating_timing_history.append({
-                "transition": f"{standby_temp}C -> {operating_temp}C",
-                "total_duration_ms": total_time,
-            })
-        else:
-            raise RuntimeError("Temperature reached signal not received")
+                if not response or len(response) < 6 or response[2] != 0x04:
+                    raise RuntimeError("Invalid standby heating ACK response")
 
-    async def start_standby_cooling(self) -> None:
-        """Start standby cooling mode."""
+                temp_response = await self._wait_for_additional_response(
+                    timeout=10.0, expected_cmd=0x0B
+                )
+
+                if temp_response and len(temp_response) >= 6 and temp_response[2] == 0x0B:
+                    total_time = (time.perf_counter() - start_time) * 1000
+                    self._heating_timing_history.append({
+                        "transition": f"{standby_temp}C -> {operating_temp}C",
+                        "total_duration_ms": total_time,
+                        "attempt_number": attempt + 1,
+                    })
+                    logger.info(
+                        f"✅ Heating complete: {standby_temp}°C → {operating_temp}°C "
+                        f"(Total={total_time:.1f}ms, attempt {attempt + 1})"
+                    )
+                    return  # 성공 - 함수 종료
+
+                else:
+                    # 타임아웃 또는 잘못된 응답 - 재시도
+                    if temp_response:
+                        received_cmd = temp_response[2] if len(temp_response) >= 3 else None
+                        error_msg = (
+                            f"Invalid temperature reached response: {temp_response.hex().upper()} "
+                            f"(received CMD=0x{received_cmd:02X}, expected CMD=0x0B)"
+                            if received_cmd is not None
+                            else f"Invalid temperature reached response: {temp_response.hex().upper()}"
+                        )
+                    else:
+                        error_msg = "Temperature reached signal not received within timeout"
+
+                    if attempt < max_retries - 1:
+                        logger.warning(
+                            f"⚠️ {error_msg} - will retry (attempt {attempt + 1}/{max_retries})"
+                        )
+                    else:
+                        logger.error(f"❌ {error_msg} - max retries exceeded")
+
+                    raise RuntimeError(error_msg)
+
+            except Exception as e:
+                last_error = e
+                if attempt < max_retries - 1:
+                    logger.warning(f"⚠️ Attempt {attempt + 1} failed: {e} - will retry")
+                    continue
+                else:
+                    logger.error(f"❌ All {max_retries} attempts failed")
+                    break
+
+        # 모든 재시도 실패
+        error_msg = f"Standby heating start failed after {max_retries} attempts: {last_error}"
+        logger.error(error_msg)
+        raise RuntimeError(error_msg) from last_error
+
+    async def start_standby_cooling(self, max_retries: int = 3) -> None:
+        """Start standby cooling mode with retry logic."""
         self._ensure_connected()
 
-        packet = "FFFF0800FEFE"
-        packet_bytes = bytes.fromhex(packet.replace(" ", ""))
+        last_error = None
+        for attempt in range(max_retries):
+            try:
+                if attempt > 0:
+                    logger.warning(
+                        f"🔄 Retry attempt {attempt + 1}/{max_retries} for standby cooling"
+                    )
+                    # 재시도 시 test mode 1을 먼저 전송하여 MCU 상태 초기화
+                    try:
+                        logger.info("📡 Sending test mode 1 before retry...")
+                        test_mode_packet = "FFFF010400000001FEFE"
+                        test_packet_bytes = bytes.fromhex(test_mode_packet.replace(" ", ""))
 
-        start_time = time.perf_counter()
+                        if self.serial_conn:
+                            self.serial_conn.write(test_packet_bytes)
+                            # Test mode 응답 대기 (짧은 타임아웃)
+                            await self._wait_for_additional_response(
+                                timeout=2.0, expected_cmd=0x01
+                            )
+                            await asyncio.sleep(0.5)  # MCU 안정화 대기
+                    except Exception as test_error:
+                        logger.warning(
+                            f"⚠️ Test mode 1 failed: {test_error} - proceeding with retry anyway"
+                        )
+                    await asyncio.sleep(0.5)  # 추가 대기 후 재시도
 
-        if self.serial_conn:
-            self.serial_conn.write(packet_bytes)
+                packet = "FFFF0800FEFE"
+                packet_bytes = bytes.fromhex(packet.replace(" ", ""))
 
-        response = await self._wait_for_additional_response(
-            timeout=self._timeout, expected_cmd=0x08
-        )
+                start_time = time.perf_counter()
 
-        if not response or len(response) < 6 or response[2] != 0x08:
-            raise RuntimeError("Invalid standby cooling ACK response")
+                if self.serial_conn:
+                    self.serial_conn.write(packet_bytes)
+                    logger.info(
+                        f"PC -> MCU: {packet} (Cooling: {self._current_operating_temp}°C → {self._current_standby_temp}°C)"
+                    )
 
-        cooling_response = await self._wait_for_additional_response(
-            timeout=40.0, expected_cmd=0x0C
-        )
+                response = await self._wait_for_additional_response(
+                    timeout=self._timeout, expected_cmd=0x08
+                )
 
-        if cooling_response and len(cooling_response) >= 6 and cooling_response[2] == 0x0C:
-            total_time = (time.perf_counter() - start_time) * 1000
-            self._cooling_timing_history.append({
-                "transition": f"{self._current_operating_temp}C -> {self._current_standby_temp}C",
-                "total_duration_ms": total_time,
-            })
-        else:
-            raise RuntimeError("Cooling complete signal not received")
+                if not response or len(response) < 6 or response[2] != 0x08:
+                    raise RuntimeError("Invalid standby cooling ACK response")
+
+                cooling_response = await self._wait_for_additional_response(
+                    timeout=40.0, expected_cmd=0x0C
+                )
+
+                if cooling_response and len(cooling_response) >= 6 and cooling_response[2] == 0x0C:
+                    total_time = (time.perf_counter() - start_time) * 1000
+                    self._cooling_timing_history.append({
+                        "transition": f"{self._current_operating_temp}C -> {self._current_standby_temp}C",
+                        "total_duration_ms": total_time,
+                        "attempt_number": attempt + 1,
+                    })
+                    logger.info(
+                        f"✅ Cooling complete: {self._current_operating_temp}°C → {self._current_standby_temp}°C "
+                        f"(Total={total_time:.1f}ms, attempt {attempt + 1})"
+                    )
+                    return  # 성공 - 함수 종료
+
+                else:
+                    # 타임아웃 또는 잘못된 응답 - 재시도
+                    if cooling_response:
+                        received_cmd = cooling_response[2] if len(cooling_response) >= 3 else None
+                        error_msg = (
+                            f"Invalid cooling complete response: {cooling_response.hex().upper()} "
+                            f"(received CMD=0x{received_cmd:02X}, expected CMD=0x0C)"
+                            if received_cmd is not None
+                            else f"Invalid cooling complete response: {cooling_response.hex().upper()}"
+                        )
+                    else:
+                        error_msg = "Cooling complete signal not received within timeout"
+
+                    if attempt < max_retries - 1:
+                        logger.warning(
+                            f"⚠️ {error_msg} - will retry (attempt {attempt + 1}/{max_retries})"
+                        )
+                    else:
+                        logger.error(f"❌ {error_msg} - max retries exceeded")
+
+                    raise RuntimeError(error_msg)
+
+            except Exception as e:
+                last_error = e
+                if attempt < max_retries - 1:
+                    logger.warning(f"⚠️ Attempt {attempt + 1} failed: {e} - will retry")
+                    continue
+                else:
+                    logger.error(f"❌ All {max_retries} attempts failed")
+                    break
+
+        # 모든 재시도 실패
+        error_msg = f"Standby cooling start failed after {max_retries} attempts: {last_error}"
+        logger.error(error_msg)
+        raise RuntimeError(error_msg) from last_error
 
     def get_all_timing_data(self) -> Dict[str, Any]:
         """Get all heating/cooling timing data."""

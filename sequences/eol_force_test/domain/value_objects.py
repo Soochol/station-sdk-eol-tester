@@ -135,6 +135,70 @@ class TestConfiguration:
             "pass_criteria": self.pass_criteria.to_dict(),
         }
 
+    def to_structured_dict(self) -> Dict[str, Any]:
+        """Convert to structured dictionary for YAML export (matches default.yaml format)."""
+        return {
+            "hardware": {
+                "voltage": self.voltage,
+                "current": self.current,
+                "upper_current": self.upper_current,
+                "upper_temperature": self.upper_temperature,
+                "activation_temperature": self.activation_temperature,
+                "standby_temperature": self.standby_temperature,
+                "fan_speed": self.fan_speed,
+                "operating_position": self.operating_position,
+                "initial_position": self.initial_position,
+            },
+            "motion_control": {
+                "velocity": self.velocity,
+                "acceleration": self.acceleration,
+                "deceleration": self.deceleration,
+            },
+            "timing": {
+                "robot_move_stabilization": self.robot_move_stabilization,
+                "mcu_temperature_stabilization": self.mcu_temperature_stabilization,
+                "robot_standby_stabilization": self.robot_standby_stabilization,
+                "poweron_stabilization": self.poweron_stabilization,
+                "power_command_stabilization": self.power_command_stabilization,
+                "loadcell_zero_delay": self.loadcell_zero_delay,
+                "mcu_command_stabilization": self.mcu_command_stabilization,
+                "mcu_boot_complete_stabilization": self.mcu_boot_complete_stabilization,
+            },
+            "test_parameters": {
+                "temperature_list": list(self.temperature_list),
+                "stroke_positions": list(self.stroke_positions),
+            },
+            "safety": {
+                "max_voltage": 50.0,
+                "max_current": 48.0,
+                "max_velocity": 100000.0,
+                "max_acceleration": 100000.0,
+                "max_deceleration": 100000.0,
+                "max_stroke": 180000.0,
+            },
+            "execution": {
+                "retry_attempts": self.retry_attempts,
+                "timeout_seconds": self.timeout_seconds,
+                "repeat_count": self.repeat_count,
+            },
+            "tolerances": {
+                "measurement_tolerance": 0.001,
+                "force_precision": 2,
+                "temperature_precision": 1,
+                "temperature_tolerance": self.temperature_tolerance,
+            },
+            "pass_criteria": {
+                **self.pass_criteria.to_dict(),
+                "measurement_tolerance": 0.001,
+                "force_precision": 2,
+                "temperature_precision": 1,
+                "position_tolerance": 0.5,
+                "max_test_duration": 300.0,
+                "min_stabilization_time": 0.5,
+                "spec_points": [],
+            },
+        }
+
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "TestConfiguration":
         data_copy = data.copy()
@@ -153,6 +217,17 @@ class RobotConfig:
     polling_interval: int = 250
     motion_param_file: Optional[str] = None
 
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "RobotConfig":
+        return cls(
+            model=str(data.get("model", "mock")),
+            axis_id=int(data.get("axis_id", 0)),
+            irq_no=int(data.get("irq_no", 7)),
+            timeout=float(data.get("timeout", 30.0)),
+            polling_interval=int(data.get("polling_interval", 250)),
+            motion_param_file=data.get("motion_param_file"),
+        )
+
 
 @dataclass(frozen=True)
 class LoadCellConfig:
@@ -166,6 +241,19 @@ class LoadCellConfig:
     parity: str = "even"
     indicator_id: int = 0
 
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "LoadCellConfig":
+        return cls(
+            model=str(data.get("model", "mock")),
+            port=str(data.get("port", "COM8")),
+            baudrate=int(data.get("baudrate", 9600)),
+            timeout=float(data.get("timeout", 1.0)),
+            bytesize=int(data.get("bytesize", 8)),
+            stopbits=int(data.get("stopbits", 1)),
+            parity=str(data.get("parity", "even")),
+            indicator_id=int(data.get("indicator_id", 0)),
+        )
+
 
 @dataclass(frozen=True)
 class MCUConfig:
@@ -178,6 +266,18 @@ class MCUConfig:
     stopbits: int = 1
     parity: Optional[str] = None
 
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "MCUConfig":
+        return cls(
+            model=str(data.get("model", "mock")),
+            port=str(data.get("port", "COM10")),
+            baudrate=int(data.get("baudrate", 115200)),
+            timeout=float(data.get("timeout", 10.0)),
+            bytesize=int(data.get("bytesize", 8)),
+            stopbits=int(data.get("stopbits", 1)),
+            parity=data.get("parity"),
+        )
+
 
 @dataclass(frozen=True)
 class PowerConfig:
@@ -189,6 +289,20 @@ class PowerConfig:
     channel: int = 1
     delimiter: str = "\n"
 
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "PowerConfig":
+        delimiter = data.get("delimiter", "\n")
+        if delimiter is None:
+            delimiter = "\n"
+        return cls(
+            model=str(data.get("model", "mock")),
+            host=str(data.get("host", "192.168.11.1")),
+            port=int(data.get("port", 5000)),
+            timeout=float(data.get("timeout", 5.0)),
+            channel=int(data.get("channel", 1)),
+            delimiter=str(delimiter),
+        )
+
 
 @dataclass(frozen=True)
 class DigitalInputConfig:
@@ -197,6 +311,15 @@ class DigitalInputConfig:
     contact_type: str = "A"
     edge_type: str = "rising"
     name: str = ""
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "DigitalInputConfig":
+        return cls(
+            pin_number=int(data.get("pin_number", 0)),
+            contact_type=str(data.get("contact_type", "A")),
+            edge_type=str(data.get("edge_type", "rising")),
+            name=str(data.get("name", "")),
+        )
 
 
 @dataclass(frozen=True)
@@ -218,6 +341,30 @@ class DigitalIOConfig:
     tower_lamp_yellow: int = 5
     tower_lamp_green: int = 6
     beep: int = 7
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "DigitalIOConfig":
+        def parse_input_config(key: str) -> Optional[DigitalInputConfig]:
+            if key in data and isinstance(data[key], dict):
+                return DigitalInputConfig.from_dict(data[key])
+            return None
+
+        return cls(
+            model=str(data.get("model", "mock")),
+            input_module_no=int(data.get("input_module_no", 0)),
+            output_module_no=int(data.get("output_module_no", 1)),
+            emergency_stop_button=parse_input_config("emergency_stop_button"),
+            operator_start_button_left=parse_input_config("operator_start_button_left"),
+            operator_start_button_right=parse_input_config("operator_start_button_right"),
+            safety_door_closed_sensor=parse_input_config("safety_door_closed_sensor"),
+            dut_clamp_safety_sensor=parse_input_config("dut_clamp_safety_sensor"),
+            dut_chain_safety_sensor=parse_input_config("dut_chain_safety_sensor"),
+            servo1_brake_release=int(data.get("servo1_brake_release", 0)),
+            tower_lamp_red=int(data.get("tower_lamp_red", 4)),
+            tower_lamp_yellow=int(data.get("tower_lamp_yellow", 5)),
+            tower_lamp_green=int(data.get("tower_lamp_green", 6)),
+            beep=int(data.get("beep", 7)),
+        )
 
 
 @dataclass(frozen=True)
@@ -260,11 +407,11 @@ class HardwareConfig:
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "HardwareConfig":
         return cls(
-            robot=RobotConfig(**data.get("robot", {})) if "robot" in data else RobotConfig(),
-            loadcell=LoadCellConfig(**data.get("loadcell", {})) if "loadcell" in data else LoadCellConfig(),
-            mcu=MCUConfig(**data.get("mcu", {})) if "mcu" in data else MCUConfig(),
-            power=PowerConfig(**data.get("power", {})) if "power" in data else PowerConfig(),
-            digital_io=DigitalIOConfig(**data.get("digital_io", {})) if "digital_io" in data else DigitalIOConfig(),
+            robot=RobotConfig.from_dict(data.get("robot", {})) if "robot" in data else RobotConfig(),
+            loadcell=LoadCellConfig.from_dict(data.get("loadcell", {})) if "loadcell" in data else LoadCellConfig(),
+            mcu=MCUConfig.from_dict(data.get("mcu", {})) if "mcu" in data else MCUConfig(),
+            power=PowerConfig.from_dict(data.get("power", {})) if "power" in data else PowerConfig(),
+            digital_io=DigitalIOConfig.from_dict(data.get("digital_io", {})) if "digital_io" in data else DigitalIOConfig(),
         )
 
 

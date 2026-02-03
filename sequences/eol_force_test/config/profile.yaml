@@ -1,0 +1,16 @@
+active_profile: default
+
+available_profiles:
+- default
+
+profile_paths:
+- test_profiles
+
+validation:
+  strict_mode: true
+  fallback_profile: default
+
+metadata:
+  created_at: '2025-09-17T16:16:04.264154'
+  updated_by: YamlConfiguration (auto-generated)
+  description: Profile management configuration for EOL test system
